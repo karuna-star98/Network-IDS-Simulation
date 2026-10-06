@@ -1,0 +1,38 @@
+{
+  "LogisticRegression": {
+    "accuracy": 0.9808,
+    "precision": 1.0,
+    "recall": 0.904,
+    "f1": 0.9495798319327731,
+    "confusion_matrix": {
+      "TN": 1000,
+      "FP": 0,
+      "FN": 24,
+      "TP": 226
+    }
+  },
+  "RandomForest": {
+    "accuracy": 0.9984,
+    "precision": 1.0,
+    "recall": 0.992,
+    "f1": 0.9959839357429718,
+    "confusion_matrix": {
+      "TN": 1000,
+      "FP": 0,
+      "FN": 2,
+      "TP": 248
+    }
+  },
+  "IsolationForest": {
+    "accuracy": 0.7768,
+    "precision": 0.46005509641873277,
+    "recall": 0.668,
+    "f1": 0.5448613376835236,
+    "confusion_matrix": {
+      "TN": 804,
+      "FP": 196,
+      "FN": 83,
+      "TP": 167
+    }
+  }
+}

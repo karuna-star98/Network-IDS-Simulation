@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Network IDS Simulation - SOC Dashboard</title>
+<!-- Chart.js loaded from a CDN (needs internet once). Everything else is this one file. -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--line:#30363d;--text:#e6edf3;--mute:#8b949e;--accent:#58a6ff;
+--INFO:#6e7681;--LOW:#3fb950;--MEDIUM:#d29922;--HIGH:#f0883e;--CRITICAL:#f85149}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,sans-serif}
+header{display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid var(--line);background:var(--panel)}
+h1{font-size:18px;margin:0}h2{font-size:13px;margin:0 0 8px;color:var(--mute);text-transform:uppercase;letter-spacing:.05em}
+.badge{padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff}
+.live{background:#238636}.idle{background:#6e7681}
+main{padding:16px 20px;max-width:1500px;margin:auto}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin-bottom:16px}
+.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+.card .v{font-size:26px;font-weight:700}.card .l{color:var(--mute);font-size:12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:12px;margin-bottom:16px}
+.wide{grid-column:span 2}@media(max-width:800px){.wide{grid-column:span 1}}
+canvas{max-height:230px}
+select,input,button,textarea{background:#0d1117;color:var(--text);border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
+button{cursor:pointer}button.primary{background:#1f6feb;border-color:#1f6feb}button.warn{background:#9e6a03;border-color:#9e6a03}
+button.good{background:#238636;border-color:#238636}button:hover{filter:brightness(1.15)}
+.filters{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:8px;align-items:center}
+table{width:100%;border-collapse:collapse}th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);white-space:nowrap}
+th{color:var(--mute);font-size:12px}tbody tr{cursor:pointer}tbody tr:hover{background:#1c2128}
+.sev{padding:1px 8px;border-radius:10px;font-size:12px;font-weight:600;color:#fff}
+.tblwrap{overflow-x:auto}
+#drawer{position:fixed;top:0;right:-640px;width:620px;max-width:100%;height:100%;background:var(--panel);border-left:1px solid var(--line);
+padding:16px;overflow-y:auto;transition:right .2s;z-index:10}#drawer.open{right:0}
+#drawer dl{display:grid;grid-template-columns:140px 1fr;gap:4px 10px;margin:8px 0}#drawer dt{color:var(--mute)}
+#drawer ol,#drawer ul{padding-left:20px;margin:4px 0}.small{color:var(--mute);font-size:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}textarea{width:100%;min-height:60px}
+.note{background:#0d1117;border:1px solid var(--line);border-radius:6px;padding:6px 8px;margin:4px 0}
+</style>
+</head>
+<body>
+<header>
+  <div><h1>🛡️ Network IDS Simulation - SOC Dashboard</h1>
+  <span class="small">Synthetic data only · Hybrid IDS (signatures + anomaly + ML) · auto-refresh every 3 s</span></div>
+  <div class="row" style="margin:0">
+    <span id="simBadge" class="badge idle">simulation: stopped</span>
+    <select id="simMode"><option value="mixed">mixed traffic</option><option value="normal">normal only</option></select>
+    <select id="simSpeed"><option value="1">slow (1 flow/s)</option><option value="0.2">fast (5 flows/s)</option></select>
+    <button class="good" id="simStart">▶ Start</button><button class="warn" id="simStop">■ Stop</button>
+    <input id="apiKey" type="password" placeholder="API key (if auth on)" size="16">
+  </div>
+</header>
+<main>
+  <section class="cards" id="cards"></section>
+
+  <div class="panel" style="margin-bottom:16px">
+    <h2>Filters</h2>
+    <div class="filters">
+      <select id="fRange"><option value="all">All time</option><option value="15m">Last 15 min</option><option value="1h">Last hour</option><option value="6h">Last 6 hours</option><option value="24h">Last 24 hours</option></select>
+      <select id="fSev"><option value="">Severity: any</option><option>INFO</option><option>LOW</option><option>MEDIUM</option><option>HIGH</option><option>CRITICAL</option></select>
+      <select id="fProto"><option value="">Protocol: any</option><option>TCP</option><option>UDP</option><option>ICMP</option></select>
+      <select id="fType"><option value="">Alert type: any</option></select>
+      <select id="fStatus"><option value="">Status: any</option><option>NEW</option><option>INVESTIGATING</option><option>RESOLVED</option><option>FALSE_POSITIVE</option></select>
+      <span class="small" id="incSummary"></span>
+    </div>
+  </div>
+
+  <section class="grid">
+    <div class="panel wide"><h2>Traffic over time (flows, suspicious, alerts)</h2><canvas id="cTraffic"></canvas></div>
+    <div class="panel"><h2>Normal vs suspicious</h2><canvas id="cClass"></canvas></div>
+    <div class="panel"><h2>Alerts by severity</h2><canvas id="cSev"></canvas></div>
+    <div class="panel"><h2>Top alert types</h2><canvas id="cTypes"></canvas></div>
+    <div class="panel"><h2>Protocol distribution</h2><canvas id="cProto"></canvas></div>
+    <div class="panel"><h2>Destination port distribution</h2><canvas id="cPorts"></canvas></div>
+    <div class="panel"><h2>Top source IPs by alerts</h2><canvas id="cSrc"></canvas></div>
+    <div class="panel"><h2>Risk score distribution</h2><canvas id="cRisk"></canvas></div>
+    <div class="panel wide"><h2>Network metric timeline
+      <select id="metricSel"><option value="packets_per_second">Packets / second</option><option value="bytes_per_second">Bytes / second</option>
+      <option value="connections_per_minute">Connections / minute</option><option value="failed_connections">Failed connections</option>
+      <option value="alerts">Alert timeline</option><option value="avg_risk">Risk timeline</option></select></h2><canvas id="cMetric"></canvas></div>
+  </section>
+
+  <div class="panel"><h2>Recent alerts <span class="small" id="alertCount"></span></h2>
+    <div class="tblwrap"><table><thead><tr><th>Time</th><th>Alert ID</th><th>Source IP</th><th>Destination IP</th><th>Proto</th><th>Alert</th><th>Severity</th><th>Risk</th><th>Status</th></tr></thead>
+    <tbody id="alertRows"></tbody></table></div></div>
+</main>
+
+<aside id="drawer"></aside>
+
+<script>
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const SEV = {INFO:"#6e7681",LOW:"#3fb950",MEDIUM:"#d29922",HIGH:"#f0883e",CRITICAL:"#f85149"};
+const PALETTE = ["#58a6ff","#3fb950","#d29922","#f0883e","#f85149","#a371f7","#db61a2","#79c0ff","#56d364","#e3b341"];
+let currentAlert = null;
+
+async function api(path, opts = {}) {
+  const headers = {"Content-Type":"application/json"};
+  if ($("apiKey").value) headers["X-API-Key"] = $("apiKey").value;
+  const r = await fetch(path, {...opts, headers});
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || r.statusText);
+  return body;
+}
+
+// ---- charts (created once, then updated in place so the page doesn't flicker)
+Chart.defaults.color = "#8b949e"; Chart.defaults.borderColor = "#30363d";
+const charts = {};
+function chart(id, type, opts = {}) {
+  charts[id] = new Chart($(id), {type, data:{labels:[],datasets:[]}, options:{responsive:true, animation:false,
+    plugins:{legend:{display:["doughnut","line"].includes(type)}}, ...opts}});
+}
+function setData(id, labels, datasets) { const c = charts[id]; c.data.labels = labels; c.data.datasets = datasets; c.update(); }
+const bar = (label, data, colors) => [{label, data, backgroundColor: colors || PALETTE[0]}];
+chart("cTraffic","line"); chart("cClass","doughnut"); chart("cSev","bar"); chart("cTypes","bar",{indexAxis:"y"});
+chart("cProto","doughnut"); chart("cPorts","bar"); chart("cSrc","bar",{indexAxis:"y"}); chart("cRisk","bar"); chart("cMetric","line");
+
+let trafficPoints = [];
+function drawMetric() {
+  const m = $("metricSel").value;
+  setData("cMetric", trafficPoints.map(p => p.label), [{label:$("metricSel").selectedOptions[0].text,
+    data: trafficPoints.map(p => p[m]), borderColor:"#58a6ff", backgroundColor:"#58a6ff33", fill:true, tension:.25}]);
+}
+$("metricSel").onchange = drawMetric;
+
+function params(extra = {}) {
+  const q = new URLSearchParams(extra);
+  for (const [k, id] of [["severity","fSev"],["protocol","fProto"],["alert_type","fType"],["status","fStatus"]])
+    if ($(id).value) q.set(k, $(id).value);
+  q.set("range", $("fRange").value);
+  return q.toString();
+}
+
+async function refresh() {
+  try {
+    const range = $("fRange").value;
+    const [s, t, a, inc, sim] = await Promise.all([
+      api("/api/dashboard/stats?range=" + range), api("/api/dashboard/traffic?range=" + (range === "all" ? "6h" : range)),
+      api("/api/alerts?" + params({limit: 50})), api("/api/incidents?range=" + range), api("/api/sim/status")]);
+    const c = s.cards;
+    $("cards").innerHTML = [["Total network flows", c.total_flows],["Normal traffic", c.normal],["Suspicious traffic", c.suspicious],
+      ["Open alerts", c.open_alerts],["Critical alerts", c.critical_alerts],["Average risk score", c.avg_risk]]
+      .map(([l, v]) => `<div class="card"><div class="v">${esc(v)}</div><div class="l">${l}</div></div>`).join("");
+    trafficPoints = t.points;
+    setData("cTraffic", t.points.map(p => p.label), [
+      {label:"Flows", data:t.points.map(p => p.flows), borderColor:"#58a6ff", tension:.25},
+      {label:"Suspicious", data:t.points.map(p => p.suspicious), borderColor:"#f0883e", tension:.25},
+      {label:"Alerts", data:t.points.map(p => p.alerts), borderColor:"#f85149", tension:.25}]);
+    drawMetric();
+    setData("cClass", ["NORMAL","SUSPICIOUS","POTENTIAL INTRUSION"], [{data:["NORMAL","SUSPICIOUS","POTENTIAL INTRUSION"].map(k => s.classification[k] || 0), backgroundColor:["#3fb950","#d29922","#f85149"]}]);
+    setData("cSev", s.severity.map(x => x.severity), bar("Alerts", s.severity.map(x => x.count), s.severity.map(x => SEV[x.severity])));
+    setData("cTypes", s.alert_types.map(x => x.name), bar("Alerts", s.alert_types.map(x => x.count)));
+    setData("cProto", s.protocols.map(x => x.name), [{data:s.protocols.map(x => x.count), backgroundColor:PALETTE}]);
+    setData("cPorts", s.ports.map(x => String(x.name)), bar("Flows", s.ports.map(x => x.count), PALETTE[1]));
+    setData("cSrc", s.top_sources.map(x => x.name), bar("Alerts", s.top_sources.map(x => x.count), PALETTE[3]));
+    setData("cRisk", s.risk_histogram.map((_, i) => `${i*10}-${i*10+10}`), bar("Flows", s.risk_histogram, PALETTE[5]));
+    const sel = $("fType"), keep = sel.value;
+    if (sel.options.length - 1 !== s.filters.alert_types.length) {
+      sel.innerHTML = '<option value="">Alert type: any</option>' + s.filters.alert_types.map(x => `<option>${esc(x)}</option>`).join("");
+      sel.value = keep;
+    }
+    $("alertCount").textContent = `(showing ${a.alerts.length} of ${a.total})`;
+    $("alertRows").innerHTML = a.alerts.map(x => `<tr data-id="${esc(x.alert_id)}"><td>${esc(x.created_at.replace("T"," "))}</td><td>${esc(x.alert_id)}</td>
+      <td>${esc(x.source_ip)}</td><td>${esc(x.destination_ip)}</td><td>${esc(x.protocol)}</td><td>${esc(x.alert_type)}</td>
+      <td><span class="sev" style="background:${SEV[x.severity]}">${esc(x.severity)}</span></td><td>${esc(x.risk_score)}</td><td>${esc(x.status)}</td></tr>`).join("");
+    $("incSummary").textContent = `${inc.alert_count} alerts correlated into ${inc.incident_count} incidents (${inc.window_seconds}s window)`;
+    $("simBadge").textContent = "simulation: " + (sim.running ? `running (${sim.mode})` : "stopped");
+    $("simBadge").className = "badge " + (sim.running ? "live" : "idle");
+  } catch (e) { $("simBadge").textContent = "error: " + e.message; $("simBadge").className = "badge idle"; }
+}
+
+// ---- investigation drawer
+$("alertRows").onclick = e => { const tr = e.target.closest("tr"); if (tr) openAlert(tr.dataset.id); };
+async function openAlert(id) {
+  currentAlert = id;
+  const a = await api("/api/alerts/" + encodeURIComponent(id)), f = a.flow, d = a.detail;
+  const rules = (d.matched_rules || []).map(m => `<li><b>${esc(m.rule_id)}</b> ${esc(m.name)} - ${esc(m.evidence)}</li>`).join("") || "<li>No signature matched</li>";
+  const ml = a.model_results.map(m => `${esc(m.model_name)}: ${esc(m.score)}`).join(" · ") || "ML disabled";
+  $("drawer").innerHTML = `
+    <div class="row" style="justify-content:space-between"><h1>${esc(a.alert_id)}</h1><button id="closeDrawer">✕</button></div>
+    <span class="sev" style="background:${SEV[a.severity]}">${esc(a.severity)}</span> <b>${esc(a.alert_type)}</b> · status <b>${esc(a.status)}</b>
+    <dl><dt>Timestamp (UTC)</dt><dd>${esc(a.created_at)}</dd><dt>Source</dt><dd>${esc(a.source_ip)}:${esc(a.source_port)}</dd>
+    <dt>Destination</dt><dd>${esc(a.destination_ip)}:${esc(a.destination_port)} (${esc(a.protocol)})</dd>
+    <dt>Traffic</dt><dd>${esc(f.packet_count)} pkts · ${esc(f.byte_count)} bytes · ${esc(f.duration)} s</dd>
+    <dt>Connections</dt><dd>${esc(f.connection_count)} (failed ${esc(f.failed_connection_count)}) · SYN ${esc(f.syn_count)} · RST ${esc(f.rst_count)}</dd>
+    <dt>Signature risk</dt><dd>${esc(d.signature_risk)}</dd><dt>Anomaly score</dt><dd>${esc(d.anomaly_score)}</dd>
+    <dt>ML scores</dt><dd>${ml}</dd><dt>Final risk</dt><dd><b>${esc(a.risk_score)}/100</b> (${esc(d.risk_level)})</dd>
+    <dt>Same-source alerts</dt><dd>${esc(a.related_alerts)} other</dd></dl>
+    <h2>Why it fired</h2><ul>${rules}</ul><p class="small">${esc(a.description)}</p>
+    <p class="small">⚠ A detection is a lead for investigation, not proof of malicious activity.</p>
+    <h2>Recommended investigation steps</h2><ol>${a.recommended_steps.map(s => `<li>${esc(s)}</li>`).join("")}</ol>
+    <h2>Workflow</h2><div class="row">
+      <button class="primary" data-s="INVESTIGATING">Investigating</button><button class="good" data-s="RESOLVED">Resolve</button>
+      <button class="warn" data-s="FALSE_POSITIVE">False positive</button>
+      <a href="/api/alerts/${encodeURIComponent(a.alert_id)}/report"><button>⬇ Incident report</button></a></div>
+    <textarea id="noteBox" maxlength="2000" placeholder="Analyst note (required when resolving / marking false positive)"></textarea>
+    <div class="row"><button id="addNote">Add note</button><span id="drawerMsg" class="small"></span></div>
+    <h2>Notes</h2>${a.notes.map(n => `<div class="note">${esc(n.note)}<div class="small">${esc(n.author)} · ${esc(n.created_at)}</div></div>`).join("") || '<span class="small">none yet</span>'}
+    <h2>Incident timeline</h2><ul>${a.timeline.map(t => `<li><span class="small">${esc(t.created_at)}</span> [${esc(t.event_type)}] ${esc(t.detail)}</li>`).join("")}</ul>`;
+  $("drawer").classList.add("open");
+  $("closeDrawer").onclick = () => $("drawer").classList.remove("open");
+  $("addNote").onclick = () => act(() => api(`/api/alerts/${id}/notes`, {method:"POST", body:JSON.stringify({note:$("noteBox").value})}));
+  $("drawer").querySelectorAll("button[data-s]").forEach(b => b.onclick = () =>
+    act(() => api(`/api/alerts/${id}/status`, {method:"PUT", body:JSON.stringify({status:b.dataset.s, note:$("noteBox").value})})));
+}
+async function act(fn) {
+  try { await fn(); await openAlert(currentAlert); refresh(); }
+  catch (e) { $("drawerMsg").textContent = e.message; $("drawerMsg").style.color = "#f85149"; }
+}
+
+// ---- simulation controls + auto refresh (polling: simplest option for beginners)
+$("simStart").onclick = async () => { try { await api("/api/sim/start", {method:"POST", body:JSON.stringify({mode:$("simMode").value, interval:+$("simSpeed").value})}); } catch (e) { alert(e.message); } refresh(); };
+$("simStop").onclick = async () => { await api("/api/sim/stop", {method:"POST"}); refresh(); };
+["fRange","fSev","fProto","fType","fStatus"].forEach(id => $(id).onchange = refresh);
+refresh(); setInterval(refresh, 3000);
+</script>
+</body>
+</html>

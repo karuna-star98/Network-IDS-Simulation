@@ -1,0 +1,59 @@
+{
+  "trained_at": "2026-10-04T06:05:42+00:00",
+  "dataset_rows": 6000,
+  "suspicious_rows": 1518,
+  "train_rows": 4800,
+  "test_rows": 1200,
+  "random_state": 42,
+  "features": [
+    "packet_count",
+    "byte_count",
+    "duration",
+    "bytes_per_second",
+    "packets_per_second",
+    "connection_count",
+    "failed_connection_count",
+    "syn_count",
+    "rst_count",
+    "average_packet_size"
+  ],
+  "models": {
+    "logistic_regression": {
+      "accuracy": 0.9525,
+      "precision": 1.0,
+      "recall": 0.8125,
+      "f1": 0.896551724137931,
+      "confusion_matrix": {
+        "tn": 896,
+        "fp": 0,
+        "fn": 57,
+        "tp": 247
+      }
+    },
+    "random_forest": {
+      "accuracy": 0.9725,
+      "precision": 0.9787985865724381,
+      "recall": 0.9111842105263158,
+      "f1": 0.9437819420783645,
+      "confusion_matrix": {
+        "tn": 890,
+        "fp": 6,
+        "fn": 27,
+        "tp": 277
+      }
+    },
+    "isolation_forest": {
+      "accuracy": 0.9316666666666666,
+      "precision": 0.8827586206896552,
+      "recall": 0.8421052631578947,
+      "f1": 0.8619528619528619,
+      "confusion_matrix": {
+        "tn": 862,
+        "fp": 34,
+        "fn": 48,
+        "tp": 256
+      }
+    }
+  },
+  "note": "Computed on a held-out split of SYNTHETIC data; real-world performance will differ."
+}

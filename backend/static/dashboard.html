@@ -1,0 +1,51 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Network IDS - SOC Dashboard</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+body{margin:0;font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0}header{padding:14px 24px;background:#1e293b;font-weight:600}
+main{padding:16px 24px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px}
+.card{background:#1e293b;border-radius:8px;padding:12px}.card b{display:block;font-size:26px}.card span{font-size:12px;color:#94a3b8}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:14px 0}.grid .card{height:230px}
+table{width:100%;border-collapse:collapse;font-size:13px}td,th{padding:6px;border-bottom:1px solid #334155;text-align:left}tr.r{cursor:pointer}tr.r:hover{background:#334155}
+select,button,textarea{background:#334155;color:#e2e8f0;border:0;border-radius:4px;padding:5px 8px}
+.CRITICAL{color:#f87171}.HIGH{color:#fb923c}.MEDIUM{color:#facc15}.LOW{color:#60a5fa}.INFO{color:#94a3b8}
+#detail{background:#1e293b;border-radius:8px;padding:14px;margin-top:14px;display:none}
+</style></head><body><header>Network IDS Simulation - SOC Dashboard <small style="color:#94a3b8">(synthetic data only, auto-refresh 3s)</small></header><main>
+<div class="cards" id="cards"></div>
+<div class="grid"><div class="card"><canvas id="c1"></canvas></div><div class="card"><canvas id="c2"></canvas></div>
+<div class="card"><canvas id="c3"></canvas></div><div class="card"><canvas id="c4"></canvas></div></div>
+<div class="card"><div style="margin-bottom:8px">Filters:
+<select id="fs"><option value="">Severity</option><option>CRITICAL</option><option>HIGH</option><option>MEDIUM</option><option>LOW</option><option>INFO</option></select>
+<select id="fp"><option value="">Protocol</option><option>TCP</option><option>UDP</option></select>
+<select id="fst"><option value="">Status</option><option>NEW</option><option>INVESTIGATING</option><option>RESOLVED</option><option>FALSE_POSITIVE</option></select></div>
+<table><thead><tr><th>Time</th><th>Source</th><th>Destination</th><th>Proto</th><th>Alert</th><th>Severity</th><th>Risk</th><th>Status</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div id="detail"></div></main>
+<script>
+const $=id=>document.getElementById(id), J=(u,o)=>fetch(u,o).then(r=>r.json());
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); // sanitize output
+const charts={};
+function chart(id,type,labels,data,title){if(charts[id])charts[id].destroy();
+ charts[id]=new Chart($(id),{type,data:{labels,datasets:[{data,label:title,backgroundColor:["#60a5fa","#facc15","#fb923c","#f87171","#94a3b8","#34d399"],borderColor:"#60a5fa"}]},
+ options:{animation:false,maintainAspectRatio:false,plugins:{title:{display:true,text:title,color:"#e2e8f0"},legend:{display:type==="doughnut"}}}})}
+async function refresh(){
+ const s=await J("/api/dashboard/stats"),t=await J("/api/dashboard/traffic"),a=await J("/api/dashboard/alerts");
+ $("cards").innerHTML=[["Total Flows",s.total_flows],["Normal",s.normal],["Suspicious",s.suspicious],["Open Alerts",s.open_alerts],["Critical",s.critical_alerts],["Avg Risk",s.avg_risk],["Incidents",s.incidents]].map(([k,v])=>`<div class="card"><b>${esc(v)}</b><span>${k}</span></div>`).join("");
+ chart("c1","line",t.recent_risk.map((_,i)=>i),t.recent_risk,"Risk Timeline (last 60 flows)");
+ chart("c2","doughnut",Object.keys(a.by_severity),Object.values(a.by_severity),"Alerts by Severity");
+ chart("c3","bar",Object.keys(a.by_type),Object.values(a.by_type),"Top Alert Types");
+ chart("c4","bar",Object.keys(t.ports),Object.values(t.ports),"Destination Ports");
+ const q=new URLSearchParams();[["severity","fs"],["protocol","fp"],["status","fst"]].forEach(([k,i])=>$(i).value&&q.set(k,$(i).value));
+ const al=await J("/api/alerts?"+q);
+ $("rows").innerHTML=al.slice(0,25).map(x=>`<tr class="r" onclick="openAlert('${esc(x.alert_id)}')"><td>${esc(x.created_at)}</td><td>${esc(x.source_ip)}</td><td>${esc(x.destination_ip)}</td><td>${esc(x.protocol)}</td><td>${esc(x.alert_type)}</td><td class="${esc(x.severity)}">${esc(x.severity)}</td><td>${esc(x.risk_score)}</td><td>${esc(x.status)}</td></tr>`).join("");}
+async function openAlert(id){const d=await J("/api/alerts/"+id),a=d.alert,f=d.flow||{};
+ $("detail").style.display="block";$("detail").innerHTML=`<h3>${esc(a.alert_id)} - ${esc(a.alert_type)} <span class="${esc(a.severity)}">${esc(a.severity)}</span></h3>
+ <p>${esc(a.source_ip)} -> ${esc(a.destination_ip)}:${esc(f.destination_port)} (${esc(a.protocol)}) | Rule ${esc(a.rule_id)} | Anomaly ${esc(f.anomaly_score)} | ML ${esc(f.ml_score??"n/a")} | <b>Risk ${esc(a.risk_score)}</b></p>
+ <p>Reason: ${esc(a.description)}</p><p><b>Recommended steps</b></p><ul>${d.recommended_steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ul>
+ <p>Status: <b>${esc(a.status)}</b> <button onclick="st('${esc(a.alert_id)}','INVESTIGATING')">Investigating</button> <button onclick="st('${esc(a.alert_id)}','RESOLVED')">Resolved</button> <button onclick="st('${esc(a.alert_id)}','FALSE_POSITIVE')">False Positive</button></p>
+ <p><b>Analyst notes</b></p><ul>${d.notes.map(n=>`<li>${esc(n.created_at)}: ${esc(n.note)}</li>`).join("")}</ul>
+ <textarea id="note" rows="2" cols="50" placeholder="Add a note"></textarea> <button onclick="addNote('${esc(a.alert_id)}')">Add note</button>`;}
+const put=(u,b,m="PUT")=>J(u,{method:m,headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});
+async function st(id,s){await put(`/api/alerts/${id}/status`,{status:s});openAlert(id);refresh()}
+async function addNote(id){await put(`/api/alerts/${id}/notes`,{note:$("note").value},"POST");openAlert(id)}
+["fs","fp","fst"].forEach(i=>$(i).onchange=refresh);refresh();setInterval(refresh,3000);
+</script></body></html>

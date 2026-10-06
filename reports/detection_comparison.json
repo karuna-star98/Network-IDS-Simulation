@@ -1,0 +1,50 @@
+{
+  "rules_only": {
+    "accuracy": 0.99,
+    "precision": 1.0,
+    "recall": 0.9605263157894737,
+    "f1": 0.9798657718120806,
+    "confusion_matrix": {
+      "tn": 896,
+      "fp": 0,
+      "fn": 12,
+      "tp": 292
+    }
+  },
+  "anomaly_only": {
+    "accuracy": 0.9541666666666667,
+    "precision": 0.959409594095941,
+    "recall": 0.8552631578947368,
+    "f1": 0.9043478260869565,
+    "confusion_matrix": {
+      "tn": 885,
+      "fp": 11,
+      "fn": 44,
+      "tp": 260
+    }
+  },
+  "ml_only": {
+    "accuracy": 0.9725,
+    "precision": 0.9787985865724381,
+    "recall": 0.9111842105263158,
+    "f1": 0.9437819420783645,
+    "confusion_matrix": {
+      "tn": 890,
+      "fp": 6,
+      "fn": 27,
+      "tp": 277
+    }
+  },
+  "hybrid": {
+    "accuracy": 0.9991666666666666,
+    "precision": 0.9967213114754099,
+    "recall": 1.0,
+    "f1": 0.9983579638752053,
+    "confusion_matrix": {
+      "tn": 895,
+      "fp": 1,
+      "fn": 0,
+      "tp": 304
+    }
+  }
+}
