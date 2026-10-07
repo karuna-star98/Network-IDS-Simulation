@@ -144,4 +144,6 @@ def create_app(db_path=None, csv="data/network_traffic.csv"):
     return app
 
 if __name__ == "__main__":
-    create_app().run(host="127.0.0.1", port=5000, debug=False)  # bound to localhost on purpose
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    create_app().run(host="0.0.0.0", port=port, debug=False)
